@@ -18,8 +18,12 @@ http.client._MAXLINE = 8192
 http.client._MAXHEADERS = 64
 
 
+class ResolutionFailure(OSError):
+    """An OS resolver failure, including platforms that return a plain OSError."""
+
+
 def classified(error):
-    if isinstance(error, socket.gaierror):
+    if isinstance(error, (socket.gaierror, ResolutionFailure)):
         kind = "dns"
     elif isinstance(error, ssl.SSLCertVerificationError):
         kind = "tls_certificate"
@@ -37,12 +41,26 @@ def classified(error):
         kind = "validation"
     else:
         kind = "connection"
-    return {"type": kind, "message": "Probe failed: " + kind + "."}
+    result = {
+        "type": kind,
+        "message": "Probe failed: " + kind + ".",
+        "exception_class": type(error).__name__,
+    }
+    if isinstance(getattr(error, "errno", None), int):
+        result["os_error_code"] = error.errno
+    return result
+
+
+def resolve(host, port):
+    try:
+        return socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except OSError as error:
+        raise ResolutionFailure(error.errno, "OS DNS resolution failed.") from None
 
 
 def addresses(host, port):
     result = []
-    for family, _, _, _, address in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM):
+    for family, _, _, _, address in resolve(host, port):
         item = {
             "address": address[0],
             "family": "IPv6" if family == socket.AF_INET6 else "IPv4",
@@ -62,7 +80,7 @@ def remaining(deadline):
 
 def connect(host, port, deadline):
     """Resolve normally and connect directly; no proxy or alternative network route."""
-    entries = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)[:4]
+    entries = resolve(host, port)[:4]
     last_error = OSError("Connection failed")
     for family, kind, protocol, _, address in entries:
         channel = socket.socket(family, kind, protocol)
@@ -190,7 +208,7 @@ def request_probe(payload):
                     result["body_suppressed"] = True
                     break
                 chunks, downloaded = [], 0
-                while downloaded < MAX_DOWNLOAD:
+                while downloaded < MAX_DOWNLOAD and not response.isclosed():
                     channel.settimeout(remaining(deadline))
                     chunk = response.read1(min(8192, MAX_DOWNLOAD - downloaded))
                     if not chunk:

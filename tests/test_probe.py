@@ -158,6 +158,16 @@ def test_byte_cap_for_public_peer_simulation(peer, monkeypatch):
     assert "synthetic-secret-cookie" not in json.dumps(result)
 
 
+def test_completed_connection_close_response(peer, monkeypatch):
+    class Global:
+        is_global = True
+
+    monkeypatch.setattr(worker.ipaddress, "ip_address", lambda _value: Global())
+    result = worker.request_probe(http_payload({"url": peer + "/"}))
+    assert result["status_code"] == 200 and result["error"] is None
+    assert result["body_excerpt"] == "synthetic body"
+
+
 def test_credentials_suppress_echo(peer):
     marker = "synthetic-secret-marker"
     result = probes.run(
@@ -218,7 +228,16 @@ def test_all_routes_and_limits(client, monkeypatch):
 
 
 def test_dns_error_classification():
-    assert worker.classified(socket.gaierror()) == {"type": "dns", "message": "Probe failed: dns."}
+    assert worker.classified(socket.gaierror())["type"] == "dns"
+
+
+def test_plain_os_resolver_error_is_dns(monkeypatch):
+    def fail(*_args, **_kwargs):
+        raise OSError(2, "synthetic resolver error")
+
+    monkeypatch.setattr(worker.socket, "getaddrinfo", fail)
+    result = worker.network_probe("dns", {"host": "example.invalid", "timeout": 1})
+    assert result["error"]["type"] == "dns" and result["error"]["os_error_code"] == 2
 
 
 def test_hard_deadline_kills_and_reaps(monkeypatch):
