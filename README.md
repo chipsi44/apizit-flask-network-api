@@ -26,7 +26,7 @@ normal gateway API-key protection; never inject a platform management credential
 | GET | /health | Immediate health |
 | POST | /request | Real outbound HTTP or HTTPS |
 | GET | /network/dns?hostname=example.com | OS A/AAAA resolution and address classes |
-| GET | /network/egress | Two fixed HTTP/HTTPS HEAD checks to example.com |
+| GET | /network/egress | Three fixed HEAD checks: example.com, python.org, ipify |
 | GET | /network/ip | Public address observed through api.ipify.org |
 | GET | /network/tls?host=example.com&port=443 | Verified TLS handshake and certificate |
 | GET | /network/tcp?host=example.com&port=443 | Single TCP connection, no application payload |
@@ -73,7 +73,7 @@ Error messages never include the original exception or submitted credentials.
 
 - Incoming JSON: 64 KiB. Outbound body: 16 KiB. Download: at most 256 KiB, excerpt 2 KiB.
 - One probe: 8 seconds network budget plus at most 1.5 seconds process startup; the child
-  is killed and reaped on expiry, including a stuck OS DNS call. Egress uses two probes
+  is killed and reaped on expiry, including a stuck OS DNS call. Egress uses three probes
   of 3 seconds each. No retries beyond at most four OS-provided addresses.
 - Three redirects maximum. Cross-origin redirects discard caller headers. Cross-origin
   307/308 body replay is refused. Query credentials in redirects are not disclosed.

@@ -200,6 +200,7 @@ def test_all_routes_and_limits(client, monkeypatch):
         "/network/ip",
     ):
         assert client.get(path, headers=headers).status_code == 200
+    assert len(client.get("/network/egress", headers=headers).json["tests"]) == 3
     assert (
         client.post("/request", json={"url": "https://example.com"}, headers=headers).status_code
         == 200
