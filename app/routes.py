@@ -106,16 +106,16 @@ def tls():
 
 @app.get("/network/egress")
 def egress():
-    """Observe HTTP and HTTPS access to two fixed public example targets."""
-    # Independent HTTP and HTTPS checks, each bounded to three seconds.
+    """Observe HTTP and HTTPS access to three independent public targets."""
+    # Independent domains avoid mistaking one failed DNS name for absent Internet.
     results = [
         probes.run("request", http_payload({"url": url, "method": "HEAD", "timeout": 3}))
-        for url in ("http://example.com/", "https://example.com/")
+        for url in ("http://example.com/", "https://www.python.org/", "https://api.ipify.org/")
     ]
     return {
         "tests": results,
         "internet_http_observed": any(x.get("status_code") for x in results),
-        "scope": "two fixed destinations; not a universal egress guarantee",
+        "scope": "three fixed destinations; not a universal egress guarantee",
     }
 
 
