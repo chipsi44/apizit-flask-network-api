@@ -21,12 +21,15 @@ CALLS = []
 def authorize():
     if request.path == "/health":
         return None
-    expected = os.environ.get("NETWORK_PROBE_TOKEN", "")
-    if len(expected) < 32:
-        return {"error": "probe_not_configured"}, 503
-    supplied = request.headers.get("X-Probe-Token", "")
-    if not hmac.compare_digest(supplied.encode(), expected.encode()):
-        return {"error": "unauthorized"}, 401
+    # APIZIT's gateway handles API-key authentication before the application runs.
+    # Keep the original application token as an optional extra for existing installs.
+    expected = os.environ.get("NETWORK_PROBE_TOKEN")
+    if expected is not None:
+        if len(expected) < 32:
+            return {"error": "probe_not_configured"}, 503
+        supplied = request.headers.get("X-Probe-Token", "")
+        if not hmac.compare_digest(supplied.encode(), expected.encode()):
+            return {"error": "unauthorized"}, 401
     with LOCK:
         now = time.monotonic()
         CALLS[:] = [x for x in CALLS if now - x < 60]
@@ -69,7 +72,7 @@ def health():
 
 @app.post("/request")
 def outbound_request():
-    """Run one authenticated, bounded outbound HTTP/HTTPS request."""
+    """Run one bounded outbound HTTP/HTTPS request."""
     payload = http_payload(request.get_json(silent=True))
     return probes.run("request", payload)
 

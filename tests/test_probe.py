@@ -62,11 +62,38 @@ def peer():
     thread.join()
 
 
-def test_fail_closed_and_health(client, monkeypatch):
+def test_optional_token_preserves_existing_authentication(client, monkeypatch):
     assert client.get("/health").json == {"status": "ok"}
     assert client.get("/network/ip").status_code == 401
-    monkeypatch.delenv("NETWORK_PROBE_TOKEN")
+    assert client.get("/network/ip", headers={"X-Probe-Token": "wrong"}).status_code == 401
+    monkeypatch.setenv("NETWORK_PROBE_TOKEN", "too-short")
     assert client.get("/network/ip", headers={"X-Probe-Token": TOKEN}).status_code == 503
+
+
+@pytest.mark.parametrize("value", ["", "short"])
+def test_explicit_invalid_token_still_fails_closed(client, monkeypatch, value):
+    monkeypatch.setenv("NETWORK_PROBE_TOKEN", value)
+    assert client.get("/network/ip").status_code == 503
+    assert client.get("/health").status_code == 200
+
+
+def test_request_without_extra_token_reaches_destination(client, monkeypatch, peer):
+    monkeypatch.delenv("NETWORK_PROBE_TOKEN")
+    response = client.post(
+        "/request",
+        json={
+            "url": peer + "/health",
+            "method": "GET",
+            "headers": {},
+            "params": {},
+            "timeout": 4,
+            "allow_redirects": True,
+            "max_redirects": 3,
+        },
+    )
+    assert response.status_code == 200
+    assert response.json["ok"] and response.json["status_code"] == 200
+    assert response.json["body_suppressed"]
 
 
 @pytest.mark.parametrize(
@@ -197,11 +224,14 @@ def test_timeout_refusal_dns_tls(peer):
     assert result["error"]["type"] in {"tls", "timeout"}
 
 
-def test_all_routes_and_limits(client, monkeypatch):
+@pytest.mark.parametrize("extra_token", [True, False])
+def test_all_routes_and_limits(client, monkeypatch, extra_token):
     monkeypatch.setattr(
         probes, "run", lambda action, payload: {"ok": True, "action": action, "payload": payload}
     )
-    headers = {"X-Probe-Token": TOKEN}
+    if not extra_token:
+        monkeypatch.delenv("NETWORK_PROBE_TOKEN")
+    headers = {"X-Probe-Token": TOKEN} if extra_token else {}
     for path in (
         "/network/dns?hostname=example.com",
         "/network/tls?host=example.com",

@@ -2,7 +2,9 @@
 
 - Standalone Python 3.12 and Flask; seven explicit routes, root pinned manifests.
 - No Dockerfile, customer Lambda handler, infrastructure or APIZIT-internal imports.
-- All diagnostic routes require NETWORK_PROBE_TOKEN (at least 32 characters).
+- APIZIT deployments use normal gateway API-key protection; no extra token is required.
+- NETWORK_PROBE_TOKEN is optional legacy authentication. When explicitly configured,
+  require at least 32 characters and matching X-Probe-Token; invalid values fail closed.
 - Keep hard process deadlines, byte caps, redirect limits and closed validation.
 - Never inspect environment credentials, fetch metadata credential paths, mutate AWS,
   send UDP payloads, scan port ranges or generate unbounded traffic.

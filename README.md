@@ -1,6 +1,6 @@
 # APIZIT Flask Network API
 
-A reusable diagnostic API to observe what a workload can reach from APIZIT TEST.
+A reusable diagnostic API to make HTTP calls and observe what an APIZIT workload can reach.
 It uses normal Flask discovery and packaging, Python 3.12, one production dependency
 and the Python standard library. No customer Dockerfile, AWS handler or cloud resource.
 
@@ -9,15 +9,20 @@ and the Python standard library. No customer Dockerfile, AWS handler or cloud re
 ```powershell
 uv venv --python 3.12
 uv pip install -r requirements-dev.txt
-# Set NETWORK_PROBE_TOKEN privately to a random value of at least 32 characters.
 .venv\Scripts\python -m flask --app app run --host 127.0.0.1
 ```
 
-`GET /health` is immediate and public. Every other route requires `X-Probe-Token`
-matching the private `NETWORK_PROBE_TOKEN` environment variable. Missing/short configuration
-fails closed with 503; missing/wrong credentials return 401. For APIZIT, create a dedicated
-workspace secret and map it to NETWORK_PROBE_TOKEN in deployment settings. Also enable the
-normal gateway API-key protection; never inject a platform management credential.
+`GET /health` is immediate. No application secret or `X-Probe-Token` is needed by default.
+For an APIZIT deployment, enable normal API-key protection and send its key in the incoming
+`X-Api-Key` header. The gateway checks this key before the request reaches Flask. Local
+development can use the loopback address above without a key. Do not expose this network
+diagnostic API publicly without an authenticated gateway or the optional token below.
+
+Existing installations can retain `NETWORK_PROBE_TOKEN` as an optional extra: when this
+variable is present, every route except `/health` still requires matching `X-Probe-Token`.
+An explicitly configured empty/short value fails closed with 503; a missing/wrong incoming
+token returns 401. To use only the gateway key, leave the variable entirely unset. Never
+use a platform management credential as either key.
 
 ## Routes
 
@@ -39,6 +44,17 @@ The public IP can change between invocations; IPv6 egress is not implied by AAAA
 
 ## POST /request
 
+Send the JSON to **your network API's `/request` route**. Its `url` is the destination
+you want to call; it is not the address to which you send this JSON.
+
+For a deployed API, an incoming request looks like:
+
+```http
+POST https://YOUR-NETWORK-API/Prod/request
+Content-Type: application/json
+X-Api-Key: YOUR-NETWORK-API-KEY
+```
+
 Example body:
 
 ```json
@@ -52,6 +68,11 @@ Example body:
   "max_redirects": 3
 }
 ```
+
+The JSON `headers` object is sent to the **destination**, not to your network API.
+Keep it empty for a public destination. If that destination also requires a key,
+put its own key there, for example `"headers": {"X-Api-Key": "DESTINATION-KEY"}`.
+The incoming gateway key and optional probe token are never forwarded automatically.
 
 Supported methods: GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS and TRACE. CONNECT is
 refused. `body` is a UTF-8 string; `json` accepts a JSON value. They are mutually exclusive.
@@ -85,7 +106,7 @@ Error messages never include the original exception or submitted credentials.
 - The child has a minimal environment without the probe token or AWS credential variables.
   The application emits no payload/credential/error logs. Infrastructure access-log policy
   remains separate; never put credentials in an incoming URL or query.
-- Two simultaneous operations and 30 authenticated calls/minute **per process**. APIZIT
+- Two simultaneous operations and 30 calls/minute **per process**. APIZIT
   account quotas remain authoritative. These counters are not a fleet-wide rate limiter.
 
 No private destination is hidden behind an application allowlist: a failed connection can
@@ -97,11 +118,16 @@ Never run broad private-subnet, port-range or third-party scans.
 ## Deploy via APIZIT
 
 Use the normal repository scan and Standard launch at an exact main commit. Set `/health`
-as the health check, gateway API-key protection and the dedicated secret mapping. The seven
+as the health check and enable gateway API-key protection. No secret mapping is required. The seven
 routes require an eligible existing account contract; the Free three-route limit does not
 fit. Consult the live catalogue; this repository never hard-codes a plan or price.
 
-This is an authenticated TEST fixture, not a publicly open proxy or a production service.
+Updating GitHub does not change an already running API: deploy a new release from the
+updated commit through APIZIT. On older releases, an unset `NETWORK_PROBE_TOKEN` causes
+503 before any outbound call. The managed runtime may show only `INTERNAL_SERVER_ERROR`
+for that response; it does not mean the destination failed or that Internet access is blocked.
+
+This is a diagnostic fixture to place behind authentication, not a publicly open proxy or a production service.
 No stable egress address, universal Internet access or commercial readiness is claimed.
 
 ## Verify
